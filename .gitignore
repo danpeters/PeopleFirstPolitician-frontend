@@ -1,0 +1,43 @@
+# ============================================================
+# File: C:\Projects\PeopleFirstPolitician\frontend\.gitignore
+#
+# Purpose:
+# - Prevents sensitive files from being committed to Git
+#
+# Security:
+# - .env files contain secrets (NEVER commit)
+# - node_modules can be reinstalled
+# - .next is build output
+# ============================================================
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+
+# Environment variables (SECURITY - NEVER COMMIT)
+.env
+.env.local
+.env.production
+.env.development
+.env.test
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+# Local package archives
+*.tgz
