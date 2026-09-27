@@ -41,3 +41,7 @@ Thumbs.db
 npm-debug.log*
 # Local package archives
 *.tgz
+
+# Temporary development backups and patch scripts
+*.bak-*
+patch-auth-persistence-*.ps1

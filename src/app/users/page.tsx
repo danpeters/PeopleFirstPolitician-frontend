@@ -56,6 +56,7 @@ interface User {
   status: string;
   createdAt: string;
   updatedAt?: string;
+  deletedAt?: string | null;
   role?: UserRole;
 }
 
@@ -111,6 +112,19 @@ export default function UsersPage() {
   const [error, setError] = useState('');
 
   /**
+ * Controls whether soft-deleted users are included
+ * in the users table.
+ *
+ * false:
+ * - Shows active users only.
+ *
+ * true:
+ * - Requests active and soft-deleted users from
+ *   the backend using includeDeleted=true.
+ */
+const [showDeleted, setShowDeleted] = useState(false);
+
+  /**
    * Controls the Add User modal.
    */
   const [showAddUser, setShowAddUser] = useState(false);
@@ -163,6 +177,20 @@ const [deletingUser, setDeletingUser] =
   useState(false);
 
 /**
+ * Controls the custom confirmation dialog used before
+ * deleting or restoring a user.
+ *
+ * A custom dialog is used instead of window.confirm() so
+ * the confirmation experience matches the application's
+ * visual design and remains accessible and predictable.
+ */
+const [confirmationUser, setConfirmationUser] =
+  useState<User | null>(null);
+
+const [confirmationAction, setConfirmationAction] =
+  useState<'delete' | 'restore' | null>(null);
+
+/**
  * Displays edit-form errors.
  */
 const [editError, setEditError] = useState('');
@@ -194,6 +222,12 @@ const [editError, setEditError] = useState('');
           search: searchValue.trim() || undefined,
           sortBy: 'createdAt',
           sortOrder: 'DESC',
+
+          /**
+           * Only explicitly request deleted users when
+           * the administrator enables the option.
+           */
+          includeDeleted: showDeleted ? 'true' : undefined,
         },
       });
 
@@ -241,7 +275,7 @@ const [editError, setEditError] = useState('');
     fetchUsers(1, '');
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [showDeleted]);
 
   /**
    * Handle user search.
@@ -388,7 +422,7 @@ const openEditUser = (user: User) => {
   setEditPhone(user.phone || '');
   setEditStatus(
     (user.status || 'ACTIVE').toUpperCase(),
-  );setEditStatus(user.status || 'ACTIVE');
+  );
   setEditError('');
   setShowEditUser(true);
 };
@@ -561,78 +595,108 @@ const handleStatusChange = async (
       
 
     /**
- * Soft-delete an existing user.
- *
- * Endpoint:
- * DELETE /api/v1/users/:id
- *
- * Security:
- * - The backend requires authentication.
- * - The backend restricts deletion to super_admin.
- *
- * The user is not permanently removed from the database.
- * The backend performs a soft delete and records an audit event.
- */
-const handleDeleteUser = async (
-  user: User,
-) => {
-  const confirmed = window.confirm(
-    `Are you sure you want to delete ${user.fullName}?`,
-  );
+     * Open the custom delete confirmation dialog.
+     *
+     * The actual DELETE request is intentionally separated from
+     * this function so opening the dialog never changes server data.
+     */
+    const handleDeleteUser = (user: User) => {
+      if (deletingUser) {
+        return;
+      }
 
-  if (!confirmed) {
-    return;
-  }
-
-  try {
-    setDeletingUser(true);
-    setEditError('');
-
-    await apiClient.delete(
-      `/users/${user.id}`,
-    );
+      setConfirmationUser(user);
+      setConfirmationAction('delete');
+    };
 
     /**
-     * Remove the deleted user from the current
-     * table immediately.
+     * Open the custom restore confirmation dialog.
+     *
+     * The actual restore request is performed only after the
+     * administrator explicitly confirms the action.
      */
-    setUsers((currentUsers) =>
-      currentUsers.filter(
-        (currentUser) =>
-          currentUser.id !== user.id,
-      ),
-    );
+    const handleRestoreUser = (user: User) => {
+      if (deletingUser) {
+        return;
+      }
+
+      setConfirmationUser(user);
+      setConfirmationAction('restore');
+    };
 
     /**
-     * Close the Edit User modal if the deleted
-     * user was being edited.
+     * Close the custom confirmation dialog without changing data.
      */
-    if (editingUser?.id === user.id) {
-      closeEditUser();
-    }
-  } catch (err: any) {
-    console.error(
-      'Failed to delete user:',
-      err,
-    );
+    const closeConfirmationDialog = () => {
+      if (deletingUser) {
+        return;
+      }
 
-    const message =
-      err?.response?.data?.message ||
-      err?.message;
+      setConfirmationUser(null);
+      setConfirmationAction(null);
+    };
 
-    if (Array.isArray(message)) {
-      setEditError(message.join(' '));
-    } else {
-      setEditError(
-        message ||
-          'Unable to delete the user. Please try again.',
-      );
-    }
-  } finally {
-    setDeletingUser(false);
-  }
-};
+    /**
+     * Confirm and execute the pending delete or restore action.
+     */
+    const confirmUserAction = async () => {
+      if (!confirmationUser || !confirmationAction || deletingUser) {
+        return;
+      }
 
+      const targetUser = confirmationUser;
+      const action = confirmationAction;
+
+      try {
+        setDeletingUser(true);
+        setError('');
+
+        if (action === 'delete') {
+          await apiClient.delete(`/users/${targetUser.id}`);
+
+          /**
+           * Close the Edit User modal if the deleted user
+           * was being edited.
+           */
+          if (editingUser?.id === targetUser.id) {
+            closeEditUser();
+          }
+        } else {
+          await apiClient.post(
+            `/users/${targetUser.id}/restore`,
+          );
+        }
+
+        /**
+         * Refresh from the backend so pagination totals and
+         * the current user list remain accurate.
+         */
+        await fetchUsers(meta.page, search);
+
+        setConfirmationUser(null);
+        setConfirmationAction(null);
+      } catch (err: any) {
+        console.error(
+          `Failed to ${action} user:`,
+          err,
+        );
+
+        const message =
+          err?.response?.data?.message ||
+          err?.message;
+
+        if (Array.isArray(message)) {
+          setError(message.join(' '));
+        } else {
+          setError(
+            message ||
+              `Unable to ${action} the user. Please try again.`,
+          );
+        }
+      } finally {
+        setDeletingUser(false);
+      }
+    };
 
   /**
    * Move to the previous page.
@@ -682,6 +746,7 @@ const handleDeleteUser = async (
 
   return (
     <div
+      className="users-page"
       style={{
         minHeight: '100vh',
         background: '#f7fafc',
@@ -692,6 +757,7 @@ const handleDeleteUser = async (
           Header
           ====================================================== */}
       <header
+        className="users-page-header"
         style={{
           background: 'white',
           padding: '16px 32px',
@@ -702,6 +768,7 @@ const handleDeleteUser = async (
         }}
       >
         <div
+          className="users-page-heading"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -722,7 +789,7 @@ const handleDeleteUser = async (
             ← Back
           </button>
 
-          <div>
+          <div className="users-page-title">
             <h1
               style={{
                 fontSize: '24px',
@@ -747,6 +814,7 @@ const handleDeleteUser = async (
         </div>
 
         <button
+          className="users-add-button"
           onClick={openAddUser}
           style={{
             padding: '10px 16px',
@@ -766,6 +834,7 @@ const handleDeleteUser = async (
           Main Content
           ====================================================== */}
       <main
+        className="users-page-main"
         style={{
           maxWidth: '1200px',
           margin: '0 auto',
@@ -774,6 +843,7 @@ const handleDeleteUser = async (
       >
         {/* Search controls */}
         <section
+          className="users-search-section"
           style={{
             background: 'white',
             padding: '20px',
@@ -783,6 +853,7 @@ const handleDeleteUser = async (
           }}
         >
           <form
+            className="users-search-form"
             onSubmit={handleSearch}
             style={{
               display: 'flex',
@@ -792,6 +863,7 @@ const handleDeleteUser = async (
             }}
           >
             <input
+              className="users-search-input"
               type="text"
               value={search}
               onChange={(event) =>
@@ -809,6 +881,7 @@ const handleDeleteUser = async (
             />
 
             <button
+              className="users-search-button"
               type="submit"
               style={{
                 padding: '10px 18px',
@@ -824,6 +897,7 @@ const handleDeleteUser = async (
             </button>
 
             <button
+              className="users-clear-button"
               type="button"
               onClick={handleClearSearch}
               style={{
@@ -839,6 +913,7 @@ const handleDeleteUser = async (
             </button>
 
             <button
+              className="users-refresh-button"
               type="button"
               onClick={() =>
                 fetchUsers(meta.page, search)
@@ -853,6 +928,31 @@ const handleDeleteUser = async (
               }}
             >
               Refresh
+            </button>
+
+            <button
+              className="users-deleted-toggle"
+              type="button"
+              onClick={() =>
+                setShowDeleted((current) => !current)
+              }
+              style={{
+                padding: '10px 18px',
+                background: showDeleted
+                  ? '#805ad5'
+                  : '#edf2f7',
+                color: showDeleted
+                  ? 'white'
+                  : '#2d3748',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: '600',
+              }}
+            >
+              {showDeleted
+                ? 'Hide Deleted Users'
+                : 'Show Deleted Users'}
             </button>
           </form>
         </section>
@@ -877,6 +977,7 @@ const handleDeleteUser = async (
             Users Table
             ==================================================== */}
         <section
+          className="users-table-section"
           style={{
             background: 'white',
             borderRadius: '8px',
@@ -885,6 +986,7 @@ const handleDeleteUser = async (
           }}
         >
           <div
+            className="users-table-header"
             style={{
               padding: '18px 20px',
               borderBottom: '1px solid #e2e8f0',
@@ -894,6 +996,7 @@ const handleDeleteUser = async (
             }}
           >
             <h2
+              className="users-table-title"
               style={{
                 margin: 0,
                 fontSize: '18px',
@@ -904,6 +1007,7 @@ const handleDeleteUser = async (
             </h2>
 
             <span
+              className="users-total"
               style={{
                 color: '#718096',
                 fontSize: '14px',
@@ -934,8 +1038,9 @@ const handleDeleteUser = async (
               No users found.
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="users-table-wrapper" style={{ overflowX: 'auto' }}>
               <table
+                className="users-table"
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
@@ -980,13 +1085,19 @@ const handleDeleteUser = async (
                       style={{
                         borderBottom:
                           '1px solid #edf2f7',
+                        background: user.deletedAt
+                          ? '#fffaf0'
+                          : 'white',
+                        opacity: user.deletedAt
+                          ? 0.82
+                          : 1,
                       }}
                     >
                       <td style={cellStyle}>
                         {user.fullName}
                       </td>
 
-                      <td style={cellStyle}>
+                      <td className="users-email-cell" style={cellStyle}>
                         {user.email}
                       </td>
 
@@ -999,7 +1110,23 @@ const handleDeleteUser = async (
                       </td>
 
                       <td style={cellStyle}>
-                        {getStatusLabel(user.status)}
+                        {user.deletedAt ? (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '4px 9px',
+                              background: '#fed7d7',
+                              color: '#c53030',
+                              borderRadius: '999px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                            }}
+                          >
+                            Deleted
+                          </span>
+                        ) : (
+                          getStatusLabel(user.status)
+                        )}
                       </td>
 
                       <td style={cellStyle}>
@@ -1007,23 +1134,84 @@ const handleDeleteUser = async (
                       </td>
 
                       <td style={cellStyle}>
-                        
-                        <button
-                        onClick={() => openEditUser(user)}
-                        style={{
-                          padding: '6px 10px',
-                          background: '#edf2f7',
-                          color: '#3182ce',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '12px',
-                        }}
-                      >
-                        Manage
-                      </button>
+                        {user.deletedAt ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleRestoreUser(user)
+                            }
+                            disabled={deletingUser}
+                            style={{
+                              padding: '6px 10px',
+                              background: deletingUser
+                                ? '#9ae6b4'
+                                : '#48bb78',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: deletingUser
+                                ? 'not-allowed'
+                                : 'pointer',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                            }}
+                          >
+                            {deletingUser
+                              ? 'Restoring...'
+                              : 'Restore'}
+                          </button>
+                        ) : (
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: '8px',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openEditUser(user)
+                              }
+                              style={{
+                                padding: '6px 10px',
+                                background: '#edf2f7',
+                                color: '#3182ce',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                              }}
+                            >
+                              Manage
+                            </button>
 
-
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDeleteUser(user)
+                              }
+                              disabled={deletingUser}
+                              style={{
+                                padding: '6px 10px',
+                                background: deletingUser
+                                  ? '#feb2b2'
+                                  : '#e53e3e',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: deletingUser
+                                  ? 'not-allowed'
+                                  : 'pointer',
+                                fontSize: '12px',
+                              }}
+                            >
+                              {deletingUser
+                                ? 'Deleting...'
+                                : 'Delete'}
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1036,6 +1224,7 @@ const handleDeleteUser = async (
           {!loading &&
             meta.totalPages > 0 && (
               <div
+                className="users-pagination"
                 style={{
                   padding: '16px 20px',
                   borderTop:
@@ -1047,6 +1236,7 @@ const handleDeleteUser = async (
                 }}
               >
                 <span
+                  className="users-page-indicator"
                   style={{
                     color: '#718096',
                     fontSize: '14px',
@@ -1134,6 +1324,7 @@ const handleDeleteUser = async (
           ====================================================== */}
       {showAddUser && (
         <div
+          className="users-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -1146,6 +1337,7 @@ const handleDeleteUser = async (
           }}
         >
           <div
+            className="users-modal-card"
             style={{
               width: '100%',
               maxWidth: '520px',
@@ -1158,6 +1350,7 @@ const handleDeleteUser = async (
           >
             {/* Modal header */}
             <div
+              className="users-modal-header"
               style={{
                 padding: '20px 24px',
                 borderBottom:
@@ -1424,6 +1617,7 @@ const handleDeleteUser = async (
           ====================================================== */}
       {showEditUser && editingUser && (
         <div
+          className="users-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -1436,6 +1630,7 @@ const handleDeleteUser = async (
           }}
         >
           <div
+            className="users-modal-card"
             style={{
               width: '100%',
               maxWidth: '520px',
@@ -1448,6 +1643,7 @@ const handleDeleteUser = async (
           >
             {/* Modal header */}
             <div
+              className="users-modal-header"
               style={{
                 padding: '20px 24px',
                 borderBottom:
@@ -1688,6 +1884,542 @@ const handleDeleteUser = async (
 
 
 
+      <style jsx>{`
+        .users-page {
+          width: 100%;
+          overflow-x: hidden;
+        }
+
+        .users-page-main {
+          width: 100%;
+        }
+
+        .users-table-wrapper {
+          width: 100%;
+        }
+
+        .users-table {
+          min-width: 900px;
+        }
+
+        .users-email-cell {
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .users-modal-overlay {
+          overflow-y: auto;
+        }
+
+        .users-modal-card {
+          max-height: calc(100vh - 40px);
+          overflow-y: auto;
+        }
+
+        @media (max-width: 700px) {
+          .users-page-header {
+            padding: 16px 14px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 16px !important;
+          }
+
+          .users-page-heading {
+            width: 100%;
+            display: grid !important;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 12px;
+            align-items: start !important;
+          }
+
+          .users-page-heading > button {
+            margin-right: 0 !important;
+            flex-shrink: 0;
+          }
+
+          .users-page-title {
+            min-width: 0;
+          }
+
+          .users-page-title h1 {
+            font-size: 23px !important;
+            line-height: 1.25 !important;
+            overflow-wrap: anywhere;
+          }
+
+          .users-page-title p {
+            line-height: 1.45 !important;
+          }
+
+          .users-add-button {
+            width: 100%;
+            min-height: 46px;
+            font-size: 15px !important;
+          }
+
+          .users-page-main {
+            padding: 16px 12px !important;
+            max-width: 100% !important;
+          }
+
+          .users-search-section {
+            padding: 16px !important;
+            margin-bottom: 16px !important;
+          }
+
+          .users-search-form {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px !important;
+          }
+
+          .users-search-input {
+            grid-column: 1 / -1;
+            min-width: 0 !important;
+            width: 100%;
+          }
+
+          .users-search-button,
+          .users-clear-button,
+          .users-refresh-button {
+            width: 100%;
+            min-height: 44px;
+          }
+
+          .users-refresh-button,
+          .users-deleted-toggle {
+            grid-column: 1 / -1;
+            width: 100%;
+            min-height: 44px;
+          }
+
+          .users-table-section {
+            border-radius: 8px !important;
+          }
+
+          .users-table-header {
+            padding: 15px 16px !important;
+          }
+
+          .users-table-title {
+            font-size: 17px !important;
+          }
+
+          .users-table-wrapper {
+            overflow: visible !important;
+          }
+
+          .users-table {
+            min-width: 0 !important;
+            width: 100% !important;
+            display: block;
+          }
+
+          .users-table thead {
+            display: none;
+          }
+
+          .users-table tbody {
+            display: block;
+            width: 100%;
+          }
+
+          .users-table tbody tr {
+            display: block;
+            width: 100%;
+            padding: 15px 16px;
+            border-bottom: 1px solid #e2e8f0 !important;
+          }
+
+          .users-table tbody td {
+            display: block;
+            width: 100%;
+            padding: 3px 0 !important;
+            border: 0 !important;
+            font-size: 14px !important;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+          }
+
+          .users-table tbody td:nth-child(1)::before { content: 'Full Name'; }
+          .users-table tbody td:nth-child(2)::before { content: 'Email'; }
+          .users-table tbody td:nth-child(3)::before { content: 'Phone'; }
+          .users-table tbody td:nth-child(4)::before { content: 'Role'; }
+          .users-table tbody td:nth-child(5)::before { content: 'Status'; }
+          .users-table tbody td:nth-child(6)::before { content: 'Created'; }
+          .users-table tbody td:nth-child(7)::before { content: 'Actions'; }
+
+          .users-table tbody td::before {
+            display: block;
+            margin-top: 5px;
+            margin-bottom: 2px;
+            color: #718096;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+
+          .users-table tbody td:first-child {
+            padding-top: 0 !important;
+            font-weight: 700;
+            color: #1a202c !important;
+          }
+
+          .users-table tbody td:last-child {
+            padding-top: 10px !important;
+          }
+
+          .users-table tbody td:last-child button {
+            width: 100%;
+            min-height: 42px;
+            font-size: 13px !important;
+          }
+
+          .users-pagination {
+            padding: 14px 16px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px;
+          }
+
+          .users-page-indicator {
+            text-align: center;
+          }
+
+          .users-pagination > div {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px !important;
+          }
+
+          .users-pagination button {
+            min-height: 42px;
+            width: 100%;
+          }
+
+          .users-modal-overlay {
+            align-items: flex-start !important;
+            padding: 12px !important;
+          }
+
+          .users-modal-card {
+            max-width: 100% !important;
+            max-height: calc(100vh - 24px) !important;
+            border-radius: 10px !important;
+          }
+
+          .users-modal-header {
+            padding: 16px !important;
+          }
+
+          .users-modal-card form {
+            padding: 16px !important;
+          }
+
+          .users-modal-card form > div:last-child {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .users-modal-card form > div:last-child button {
+            width: 100%;
+            min-height: 44px;
+          }
+        }
+
+
+        /* ========================================================
+           DELETE / RESTORE CONFIRMATION DIALOG
+           ======================================================== */
+        .users-confirmation-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 2000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          background: rgba(15, 23, 42, 0.62);
+          backdrop-filter: blur(3px);
+        }
+
+        .users-confirmation-card {
+          width: 100%;
+          max-width: 460px;
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 30px;
+          box-shadow: 0 24px 70px rgba(15, 23, 42, 0.25);
+          text-align: center;
+          animation: usersConfirmationIn 0.18s ease-out;
+        }
+
+        .users-confirmation-icon {
+          width: 54px;
+          height: 54px;
+          margin: 0 auto 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          background: #fff5f5;
+          color: #c53030;
+          border: 1px solid #fed7d7;
+          font-size: 25px;
+          font-weight: 800;
+        }
+
+        .users-confirmation-card h2 {
+          margin: 0 0 8px;
+          color: #1a202c;
+          font-size: 22px;
+          font-weight: 700;
+        }
+
+        .users-confirmation-card > p {
+          margin: 0 auto 18px;
+          max-width: 390px;
+          color: #4a5568;
+          font-size: 14px;
+          line-height: 1.6;
+        }
+
+        .users-confirmation-user {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          margin: 0 0 14px;
+          padding: 13px 16px;
+          background: #f7fafc;
+          border: 1px solid #edf2f7;
+          border-radius: 8px;
+          text-align: left;
+        }
+
+        .users-confirmation-user strong {
+          color: #2d3748;
+          font-size: 14px;
+        }
+
+        .users-confirmation-user span {
+          color: #718096;
+          font-size: 13px;
+          overflow-wrap: anywhere;
+        }
+
+        .users-confirmation-note {
+          margin-bottom: 24px;
+          padding: 11px 13px;
+          border-radius: 7px;
+          background: #fffaf0;
+          color: #744210;
+          font-size: 12px;
+          line-height: 1.55;
+          text-align: left;
+        }
+
+        .users-confirmation-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .users-confirmation-actions button {
+          min-height: 44px;
+          border: none;
+          border-radius: 7px;
+          padding: 10px 16px;
+          font-size: 14px;
+          font-weight: 700;
+          transition: background 0.15s ease, transform 0.05s ease;
+        }
+
+        .users-confirmation-actions button:active:not(:disabled) {
+          transform: translateY(1px);
+        }
+
+        .users-confirmation-actions button:disabled {
+          cursor: not-allowed;
+          opacity: 0.65;
+        }
+
+        .users-confirmation-cancel {
+          background: #edf2f7;
+          color: #2d3748;
+        }
+
+        .users-confirmation-cancel:hover:not(:disabled) {
+          background: #e2e8f0;
+        }
+
+        .users-confirmation-danger {
+          background: #e53e3e;
+          color: #ffffff;
+        }
+
+        .users-confirmation-danger:hover:not(:disabled) {
+          background: #c53030;
+        }
+
+        .users-confirmation-success {
+          background: #38a169;
+          color: #ffffff;
+        }
+
+        .users-confirmation-success:hover:not(:disabled) {
+          background: #2f855a;
+        }
+
+        @keyframes usersConfirmationIn {
+          from {
+            opacity: 0;
+            transform: translateY(8px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @media (max-width: 520px) {
+          .users-confirmation-overlay {
+            padding: 14px;
+          }
+
+          .users-confirmation-card {
+            max-width: 100%;
+            padding: 22px;
+            border-radius: 12px;
+          }
+
+          .users-confirmation-actions {
+            grid-template-columns: 1fr;
+          }
+
+          .users-confirmation-actions button {
+            width: 100%;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .users-page-header {
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+          }
+
+          .users-page-main {
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+          }
+
+          .users-page-heading {
+            gap: 9px;
+          }
+
+          .users-page-title h1 {
+            font-size: 21px !important;
+          }
+
+          .users-page-title p {
+            font-size: 13px !important;
+          }
+
+          .users-table-header {
+            padding-left: 13px !important;
+            padding-right: 13px !important;
+          }
+
+          .users-table tbody tr {
+            padding-left: 13px;
+            padding-right: 13px;
+          }
+        }
+      `}</style>
+
+      {/* ==========================================================
+          DELETE / RESTORE CONFIRMATION DIALOG
+          ========================================================== */}
+      {confirmationUser && confirmationAction && (
+        <div
+          className="users-confirmation-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeConfirmationDialog();
+            }
+          }}
+        >
+          <div
+            className="users-confirmation-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="users-confirmation-title"
+            aria-describedby="users-confirmation-description"
+          >
+            <div className="users-confirmation-icon" aria-hidden="true">
+              {confirmationAction === 'delete' ? '!' : '↻'}
+            </div>
+
+            <h2 id="users-confirmation-title">
+              {confirmationAction === 'delete'
+                ? 'Delete User'
+                : 'Restore User'}
+            </h2>
+
+            <p id="users-confirmation-description">
+              {confirmationAction === 'delete'
+                ? `Are you sure you want to delete ${confirmationUser.fullName}?`
+                : `Are you sure you want to restore ${confirmationUser.fullName}?`}
+            </p>
+
+            <div className="users-confirmation-user">
+              <strong>{confirmationUser.fullName}</strong>
+              <span>{confirmationUser.email}</span>
+            </div>
+
+            <div className="users-confirmation-note">
+              {confirmationAction === 'delete'
+                ? 'The account will be soft-deleted and can be restored later by an authorised administrator.'
+                : 'The account will be restored and will appear again among active users.'}
+            </div>
+
+            <div className="users-confirmation-actions">
+              <button
+                type="button"
+                onClick={closeConfirmationDialog}
+                disabled={deletingUser}
+                className="users-confirmation-cancel"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmUserAction}
+                disabled={deletingUser}
+                className={
+                  confirmationAction === 'delete'
+                    ? 'users-confirmation-danger'
+                    : 'users-confirmation-success'
+                }
+              >
+                {deletingUser
+                  ? confirmationAction === 'delete'
+                    ? 'Deleting...'
+                    : 'Restoring...'
+                  : confirmationAction === 'delete'
+                    ? 'Delete User'
+                    : 'Restore User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

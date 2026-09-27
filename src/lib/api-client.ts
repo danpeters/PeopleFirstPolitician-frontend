@@ -1,4 +1,4 @@
-/**
+﻿/**
  * API Client: Backend Communication
  * 
  * Purpose:
@@ -43,52 +43,33 @@ const MAX_RETRY_ATTEMPTS = 3;
  * Get the authentication token from cookies (secure httpOnly)
  * For client-side, we read from cookies set by the server
  */
+/**
+ * Returns the access token from the appropriate browser storage.
+ * Remember Me true -> localStorage; false -> sessionStorage.
+ */
 export const getAccessToken = (): string | null => {
-  // For production, use httpOnly cookies
-  // For development, you can also check localStorage
-  if (typeof window !== 'undefined') {
-    // Try to get token from cookie (set by server)
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-      const [name, value] = cookie.trim().split('=');
-      if (name === 'accessToken') {
-        return value;
-      }
-    }
-    // Fallback to localStorage for development
-    return localStorage.getItem('accessToken');
-  }
-  return null;
+  if (typeof window === 'undefined') return null;
+  const rememberMe = localStorage.getItem('rememberMe') === 'true';
+  return rememberMe ? localStorage.getItem('accessToken') : sessionStorage.getItem('accessToken');
 };
-
-/**
- * Set the authentication token
- * For production, tokens should be set as httpOnly cookies by the server
- */
+/** Stores an access token according to the Remember Me setting. */
 export const setAccessToken = (token: string): void => {
-  if (typeof window !== 'undefined') {
-    // Set cookie with security flags
-    document.cookie = `accessToken=${token}; path=/; Secure; SameSite=Strict; max-age=900`; // 15 minutes
-    localStorage.setItem('accessToken', token);
-  }
+  if (typeof window === 'undefined') return;
+  const rememberMe = localStorage.getItem('rememberMe') === 'true';
+  if (rememberMe) { localStorage.setItem('accessToken', token); sessionStorage.removeItem('accessToken'); }
+  else { sessionStorage.setItem('accessToken', token); localStorage.removeItem('accessToken'); }
+  const maxAge = rememberMe ? 604800 : 900;
+  const secureAttribute = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `accessToken=${encodeURIComponent(token)}; path=/; SameSite=Strict${secureAttribute}; max-age=${maxAge}`;
 };
-
-/**
- * Remove the authentication token
- */
+/** Removes authentication tokens and cached user data from both browser stores. */
 export const removeAccessToken = (): void => {
-  if (typeof window !== 'undefined') {
-    document.cookie = 'accessToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-  }
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('accessToken'); localStorage.removeItem('refreshToken'); localStorage.removeItem('rememberMe'); localStorage.removeItem('user');
+  sessionStorage.removeItem('accessToken'); sessionStorage.removeItem('refreshToken'); sessionStorage.removeItem('rememberMe');
+  document.cookie = 'accessToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict';
+  document.cookie = 'refreshToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict';
 };
-
-// ============================================================
-// API Client Setup
-// ============================================================
-
 export const apiClient = axios.create({
   baseURL: `${API_BASE_URL}/api/v1`,
   headers: {

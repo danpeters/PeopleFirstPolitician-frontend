@@ -1,11 +1,12 @@
+//PS C:\Projects\PeopleFirstPolitician\frontend> type "C:\Projects\PeopleFirstPolitician\frontend\src\contexts\auth-context.tsx"
 /**
  * Authentication Context
- * 
+ *
  * Purpose:
  * - Provides authentication state and methods across the app
  * - Manages user session
  * - Handles login, logout, and token refresh
- * 
+ *
  * Security Features:
  * - Secure token storage in httpOnly cookies
  * - Automatic token refresh
@@ -18,7 +19,7 @@
  * - CSRF protection
  * - Secure password handling (never stored in state)
  * - Multi-factor authentication readiness
- * 
+ *
  * Implementation Notes:
  * - Uses React Context API for state management
  * - Implements security best practices
@@ -58,7 +59,14 @@ export interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   hasRole: (role: string | string[]) => boolean;
-  login: (email: string, password: string) => Promise<void>;
+  register: (
+    fullName: string,
+    email: string,
+    phone: string,
+    password: string,
+    confirmPassword: string,
+  ) => Promise<User>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   updateUser: (user: User) => void;
@@ -70,6 +78,61 @@ export interface AuthContextType {
 
 const SESSION_TIMEOUT = 60 * 15; // 15 minutes in seconds
 const REFRESH_BUFFER = 60 * 2; // 2 minutes before expiration
+
+/**
+ * Storage key used to remember whether the user explicitly selected
+ * "Keep me logged in".
+ *
+ * The preference itself is not a credential.
+ */
+const REMEMBER_ME_KEY = 'rememberMe';
+
+/**
+ * Return whether the current authentication session was requested
+ * to persist across browser restarts.
+ */
+const isRememberedSession = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+};
+
+/**
+ * Read the refresh token from the storage selected for the current
+ * session.
+ *
+ * - remembered session -> localStorage
+ * - normal session     -> sessionStorage
+ */
+const getStoredRefreshToken = (): string | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return isRememberedSession()
+    ? localStorage.getItem('refreshToken')
+    : sessionStorage.getItem('refreshToken');
+};
+
+/**
+ * Store the refresh token in the storage selected for the current
+ * session.
+ */
+const storeRefreshToken = (token: string): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (isRememberedSession()) {
+    localStorage.setItem('refreshToken', token);
+    sessionStorage.removeItem('refreshToken');
+  } else {
+    sessionStorage.setItem('refreshToken', token);
+    localStorage.removeItem('refreshToken');
+  }
+};
 
 // ============================================================
 // Context Creation
@@ -86,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
-  
+
   // Refs for session management
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -97,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /**
    * Refresh user data from the API
-   * 
+   *
    * Security Notes:
    * - Validates token before making request
    * - Handles invalid/expired tokens gracefully
@@ -106,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = useCallback(async () => {
     try {
       const token = getAccessToken();
+
       if (!token) {
         setUser(null);
         setIsAuthenticated(false);
@@ -114,21 +178,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const response = await apiClient.get('/auth/me');
       const userData = response.data;
-      
-      // Validate user data structure
+
       if (!userData || typeof userData !== 'object') {
         throw new Error('Invalid user data received');
       }
 
       setUser(userData);
       setIsAuthenticated(true);
-      // Reset session timeout on successful refresh
-      resetSessionTimeout();
     } catch (error) {
-      // Don't set user to null immediately to avoid flash
       console.error('Failed to refresh user:', error);
-      
-      // Only clear session if token is invalid
+
       if ((error as any)?.response?.status === 401) {
         await logout();
       }
@@ -139,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /**
    * Update user data
-   * 
+   *
    * Security Notes:
    * - Validates user data before updating
    * - Only updates if user is authenticated
@@ -152,9 +211,137 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(updatedUser);
   }, []);
 
+    /**
+   * Register a new public user.
+   *
+   * Security Features:
+   * - Validates all required registration fields.
+   * - Validates email format.
+   * - Validates password strength.
+   * - Requires password confirmation.
+   * - Does not accept or send a role.
+   * - The backend assigns the standard USER role.
+   *
+   * Endpoint:
+   * POST /api/v1/auth/register
+   *
+   * @returns The newly created user.
+   * @throws Error when registration fails.
+   */
+  const register = useCallback(
+    async (
+      fullName: string,
+      email: string,
+      phone: string,
+      password: string,
+      confirmPassword: string,
+    ): Promise<User> => {
+      /**
+       * Basic input validation.
+       */
+      if (
+        !fullName.trim() ||
+        !email.trim() ||
+        !phone.trim() ||
+        !password ||
+        !confirmPassword
+      ) {
+        throw new Error(
+          'Full name, email, phone, password, and password confirmation are required',
+        );
+      }
+
+      /**
+       * Validate email format.
+       */
+      const emailRegex =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!emailRegex.test(email.trim())) {
+        throw new Error('Invalid email format');
+      }
+
+      /**
+       * Validate password length.
+       */
+      if (password.length < 8) {
+        throw new Error(
+          'Password must be at least 8 characters',
+        );
+      }
+
+      /**
+       * Require password confirmation.
+       */
+      if (password !== confirmPassword) {
+        throw new Error(
+          'Password and confirmation do not match',
+        );
+      }
+
+      /**
+       * Submit the registration request.
+       *
+       * No role is sent from the frontend.
+       * The backend automatically assigns the standard
+       * USER role.
+       */
+      try {
+        const response = await apiClient.post(
+          '/auth/register',
+          {
+            fullName: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            phone: phone.trim(),
+            password,
+            confirmPassword,
+          },
+        );
+
+        /**
+         * Validate the backend response.
+         */
+        const userData = response.data?.user;
+
+        if (
+          !userData ||
+          typeof userData !== 'object'
+        ) {
+          throw new Error(
+            'Invalid registration response from server',
+          );
+        }
+
+        /**
+         * Display a success notification.
+         */
+        toast.success(
+          'Registration successful. You can now sign in.',
+        );
+
+        return userData as User;
+      } catch (error: any) {
+        /**
+         * Use the backend's validation/error message when
+         * available.
+         */
+        const errorMessage =
+          error.response?.data?.message ||
+          error.message ||
+          'Registration failed. Please try again.';
+
+        toast.error(errorMessage);
+
+        throw new Error(errorMessage);
+      }
+    },
+    [],
+  );
+
+
   /**
    * Login user
-   * 
+   *
    * Security Features:
    * - Rate limiting (handled by backend)
    * - Secure password handling (never stored)
@@ -162,127 +349,225 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * - CSRF protection
    * - Login attempt tracking
    * - Session management
-   * 
+   *
    * @throws {Error} If login fails
    */
-  const login = useCallback(async (email: string, password: string) => {
-    // Input validation
-    if (!email || !password) {
-      throw new Error('Email and password are required');
-    }
-
-    // Email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      throw new Error('Invalid email format');
-    }
-
-    // Password length validation (minimum 8 characters)
-    if (password.length < 8) {
-      throw new Error('Password must be at least 8 characters');
-    }
-
-    try {
-      const response = await apiClient.post('/auth/login', { email, password });
-      
-      // Validate response
-      if (!response.data || typeof response.data !== 'object') {
-        throw new Error('Invalid response from server');
+  const login = useCallback(
+    async (
+      email: string,
+      password: string,
+      rememberMe = false,
+    ) => {
+      if (!email || !password) {
+        throw new Error('Email and password are required');
       }
 
-      const { accessToken, refreshToken, user: userData } = response.data;
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-      // Validate token presence
-      if (!accessToken) {
-        throw new Error('No access token received');
+      if (!emailRegex.test(email)) {
+        throw new Error('Invalid email format');
       }
 
-      // Validate user data
-      if (!userData || typeof userData !== 'object') {
-        throw new Error('Invalid user data received');
+      if (password.length < 8) {
+        throw new Error('Password must be at least 8 characters');
       }
 
-      // Store tokens securely (httpOnly cookies set by backend)
-      // Store in localStorage as fallback for development
-      if (typeof window !== 'undefined') {
-        // Set httpOnly cookies via API (should be done by server)
-        // For client-side, we store in localStorage for convenience
-        localStorage.setItem('accessToken', accessToken);
-        if (refreshToken) {
-          localStorage.setItem('refreshToken', refreshToken);
+      try {
+        const response = await apiClient.post('/auth/login', {
+          email,
+          password,
+        });
+
+        if (!response.data || typeof response.data !== 'object') {
+          throw new Error('Invalid response from server');
         }
-        localStorage.setItem('user', JSON.stringify(userData));
-        
-        // Also set cookies for middleware
+
+        const {
+          accessToken,
+          refreshToken,
+          user: userData,
+        } = response.data;
+
+        if (!accessToken) {
+          throw new Error('No access token received');
+        }
+
+        if (!userData || typeof userData !== 'object') {
+          throw new Error('Invalid user data received');
+        }
+
+        if (typeof window !== 'undefined') {
+          /**
+           * Clear any credentials left by a previous authentication mode.
+           */
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+
+          sessionStorage.removeItem('accessToken');
+          sessionStorage.removeItem('refreshToken');
+          sessionStorage.removeItem('user');
+
+          /**
+           * Store the Remember Me preference AFTER clearing stale credentials.
+           */
+          if (rememberMe) {
+            localStorage.setItem(REMEMBER_ME_KEY, 'true');
+            sessionStorage.removeItem(REMEMBER_ME_KEY);
+          } else {
+            localStorage.removeItem(REMEMBER_ME_KEY);
+            sessionStorage.setItem(REMEMBER_ME_KEY, 'false');
+          }
+
+          /**
+           * Store the credentials according to the selected mode.
+           *
+           * Remembered:
+           *   localStorage survives browser restart.
+           *
+           * Normal:
+           *   sessionStorage is cleared when the browser session ends.
+           */
+          const storage = rememberMe
+            ? localStorage
+            : sessionStorage;
+
+          storage.setItem('accessToken', accessToken);
+
+          if (refreshToken) {
+            storage.setItem('refreshToken', refreshToken);
+          }
+
+          storage.setItem(
+            'user',
+            JSON.stringify(userData),
+          );
+
+          /**
+           * Set the access-token cookie.
+           *
+           * Without remember-me it is a browser-session cookie.
+           * With remember-me it persists for the configured refresh
+           * period.
+           */
+          const secureAttribute =
+            window.location.protocol === 'https:'
+              ? '; Secure'
+              : '';
+
+          const accessCookieLifetime = rememberMe
+            ? SESSION_TIMEOUT
+            : '';
+
+          document.cookie =
+            accessCookieLifetime
+              ? `accessToken=${accessToken}; path=/; SameSite=Strict${secureAttribute}; max-age=${accessCookieLifetime}`
+              : `accessToken=${accessToken}; path=/; SameSite=Strict${secureAttribute}`;
+
+          if (refreshToken) {
+            const refreshCookieLifetime =
+              rememberMe ? 604800 : '';
+
+            document.cookie =
+              refreshCookieLifetime
+                ? `refreshToken=${refreshToken}; path=/; SameSite=Strict${secureAttribute}; max-age=${refreshCookieLifetime}`
+                : `refreshToken=${refreshToken}; path=/; SameSite=Strict${secureAttribute}`;
+          }
+        }
+
+        setUser(userData);
+        setIsAuthenticated(true);
+
         /**
- * Use the Secure cookie attribute only when the application
- * is running over HTTPS.
- *
- * During local development the frontend runs on:
- *   http://localhost:3001
- *
- * Therefore, Secure must not be added to the cookie locally.
- * In production over HTTPS, Secure will automatically be used.
- */
-const secureAttribute =
-  window.location.protocol === 'https:' ? '; Secure' : '';
+         * A normal session expires after 15 minutes of inactivity.
+         * A remembered session does not use that automatic logout;
+         * the refresh-token cycle keeps it authenticated.
+         */
+        if (rememberMe) {
+          if (sessionTimeoutRef.current) {
+            clearTimeout(sessionTimeoutRef.current);
+            sessionTimeoutRef.current = null;
+          }
 
-document.cookie = `accessToken=${accessToken}; path=/; SameSite=Strict${secureAttribute}; max-age=${SESSION_TIMEOUT}`;
-        
-        if (refreshToken) {
-          document.cookie = `refreshToken=${refreshToken}; path=/; SameSite=Strict${secureAttribute}; max-age=604800`;
+          scheduleTokenRefresh();
+        } else {
+          resetSessionTimeout();
+          scheduleTokenRefresh();
         }
+
+        toast.success(
+          `Welcome back, ${userData.fullName || 'User'}!`,
+        );
+      } catch (error: any) {
+        const errorMessage =
+          error.response?.data?.message ||
+          error.message ||
+          'Login failed. Please try again.';
+
+        toast.error(errorMessage);
+        throw new Error(errorMessage);
       }
-
-      // Update state
-      setUser(userData);
-      setIsAuthenticated(true);
-      
-      // Reset session timeout
-      resetSessionTimeout();
-      
-      // Schedule token refresh
-      scheduleTokenRefresh();
-
-      // Show success message
-      toast.success(`Welcome back, ${userData.fullName || 'User'}!`);
-    } catch (error: any) {
-      // Sanitize error message
-      const errorMessage = error.response?.data?.message || error.message || 'Login failed. Please try again.';
-      toast.error(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, []);
+    },
+    [],
+  );
 
   // File: C:\Projects\PeopleFirstPolitician\frontend\src\contexts\auth-context.tsx
 
-  /**
-   * Logout user
+    /**
+   * Logout user.
    *
    * Security Features:
-   * - Clears all local authentication state immediately.
-   * - Clears access and refresh tokens.
+   * - Sends the current refresh token to the backend.
+   * - Backend invalidates the refresh token.
+   * - Clears local authentication state.
    * - Removes authentication cookies.
-   * - Cancels session timers.
-   * - Attempts to notify the backend without blocking logout.
+   * - Removes stored authentication tokens.
+   * - Cancels active session timers.
    * - Redirects the user to the public landing page.
    *
-   * The local session is cleared before the backend request so that
-   * a slow or unavailable logout endpoint cannot leave the user
-   * apparently logged in.
+   * Important:
+   * The refresh token is captured before local storage is cleared,
+   * because the backend requires it to invalidate the server-side
+   * refresh credential.
    */
   const logout = useCallback(async (): Promise<void> => {
-    // Best-effort notification to the backend.
-    //
-    // Do not wait for this request before clearing the local session.
-    void apiClient.post('/auth/logout').catch(() => {
-      // Ignore logout endpoint errors.
-    });
+    /**
+     * Capture the refresh token before clearing local authentication
+     * state.
+     */
+    const refreshToken = getStoredRefreshToken();
 
-    // Clear all tokens.
+    /**
+     * Notify the backend so that the refresh token is invalidated.
+     *
+     * Logout should still clear the local session if the backend
+     * request fails, so that the user is not left apparently logged in.
+     */
+    if (refreshToken) {
+      try {
+        await apiClient.post('/auth/logout', {
+          refreshToken,
+        });
+      } catch (error) {
+        /**
+         * The local session will still be cleared even if the
+         * backend logout request fails.
+         */
+        console.error(
+          'Backend logout request failed:',
+          error,
+        );
+      }
+    }
+
+    /**
+     * Clear the access token and refresh token from local storage.
+     */
     removeAccessToken();
 
-    // Clear authentication cookies and stored user data.
+    /**
+     * Clear authentication cookies and stored user data.
+     */
     if (typeof window !== 'undefined') {
       document.cookie =
         'accessToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
@@ -293,23 +578,40 @@ document.cookie = `accessToken=${accessToken}; path=/; SameSite=Strict${secureAt
       localStorage.removeItem('user');
     }
 
-    // Clear authentication state from React memory.
+    /**
+     * Clear authentication state from React memory.
+     */
     setUser(null);
     setIsAuthenticated(false);
 
-    // Cancel active session timers.
+    /**
+     * Cancel active token-refresh timer.
+     */
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
 
+    /**
+     * Cancel active session timeout.
+     */
     if (sessionTimeoutRef.current) {
       clearTimeout(sessionTimeoutRef.current);
       sessionTimeoutRef.current = null;
     }
 
-    // Return the user to the public landing page.
-    router.push('/');
+    /**
+     * Return the user to the public landing page.
+     *
+     * A full browser navigation is deliberately used here instead
+     * of router.push(). This prevents the AppShell authentication
+     * guard from seeing the protected route momentarily after the
+     * authentication state has been cleared and redirecting the
+     * user to /login before navigation to / can complete.
+     */
+    if (typeof window !== 'undefined') {
+      window.location.replace('/');
+    }
   }, [router]);
 
   // ============================================================
@@ -327,12 +629,21 @@ document.cookie = `accessToken=${accessToken}; path=/; SameSite=Strict${secureAt
    * - Reduces the risk of session misuse on a shared computer.
    */
   const resetSessionTimeout = useCallback(() => {
-    // Clear the previous timeout before creating a new one.
+    // Remembered sessions are intentionally not terminated by this
+    // 15-minute inactivity timer.
+    if (isRememberedSession()) {
+      if (sessionTimeoutRef.current) {
+        clearTimeout(sessionTimeoutRef.current);
+        sessionTimeoutRef.current = null;
+      }
+
+      return;
+    }
+
     if (sessionTimeoutRef.current) {
       clearTimeout(sessionTimeoutRef.current);
     }
 
-    // Schedule automatic logout after the configured session period.
     sessionTimeoutRef.current = setTimeout(() => {
       void logout();
     }, SESSION_TIMEOUT * 1000);
@@ -357,10 +668,7 @@ document.cookie = `accessToken=${accessToken}; path=/; SameSite=Strict${secureAt
 
     // Refresh tokens are currently optional because the backend
     // refresh-token implementation is not yet fully wired.
-    const refreshToken =
-      typeof window !== 'undefined'
-        ? localStorage.getItem('refreshToken')
-        : null;
+    const refreshToken = getStoredRefreshToken();
 
     if (!refreshToken) {
       return;
@@ -387,7 +695,7 @@ document.cookie = `accessToken=${accessToken}; path=/; SameSite=Strict${secureAt
         setAccessToken(newAccessToken);
 
         if (newRefreshToken) {
-          localStorage.setItem('refreshToken', newRefreshToken);
+          storeRefreshToken(newRefreshToken);
         }
 
         // Refresh the user information after obtaining the new token.
@@ -437,10 +745,21 @@ document.cookie = `accessToken=${accessToken}; path=/; SameSite=Strict${secureAt
    * against the backend.
    */
   useEffect(() => {
-    void refreshUser();
+    void (async () => {
+      await refreshUser();
+
+      /**
+       * Establish the correct timer after the stored session has
+       * been validated.
+       */
+      if (isRememberedSession()) {
+        scheduleTokenRefresh();
+      } else {
+        resetSessionTimeout();
+      }
+    })();
 
     return () => {
-      // Clean up timers when the provider is unmounted.
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
       }
@@ -449,7 +768,7 @@ document.cookie = `accessToken=${accessToken}; path=/; SameSite=Strict${secureAt
         clearTimeout(sessionTimeoutRef.current);
       }
     };
-  }, [refreshUser]);
+  }, [refreshUser, resetSessionTimeout, scheduleTokenRefresh]);
 
   // ============================================================
   // Authentication Context Provider
@@ -465,6 +784,7 @@ document.cookie = `accessToken=${accessToken}; path=/; SameSite=Strict${secureAt
         isLoading,
         isAuthenticated,
         hasRole,
+        register,
         login,
         logout,
         refreshUser,
