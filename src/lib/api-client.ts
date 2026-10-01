@@ -75,6 +75,8 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'X-Client-Version': '1.0.0',
+    'Cache-Control': 'no-store',
+    'Pragma': 'no-cache',
   },
   timeout: API_TIMEOUT,
   withCredentials: true, // Send cookies with requests
