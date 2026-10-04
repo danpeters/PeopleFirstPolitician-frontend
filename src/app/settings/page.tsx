@@ -36,9 +36,21 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  const passwordRequirements = {
+    length: newPassword.length >= 12,
+    uppercase: /[A-Z]/.test(newPassword),
+    lowercase: /[a-z]/.test(newPassword),
+    number: /[0-9]/.test(newPassword),
+    special: /[^A-Za-z0-9]/.test(newPassword),
+  };
 
   // File: C:\Projects\PeopleFirstPolitician\frontend\src\app\settings\page.tsx
 
@@ -125,8 +137,8 @@ export default function SettingsPage() {
        * The backend returns the updated user without sensitive fields.
        * Update AuthContext directly so the active session is preserved.
        */
-      if (response.data) {
-        updateUser(response.data);
+      if (response.data?.data) {
+        updateUser(response.data.data);
 
         /**
          * Keep the locally stored user information synchronised.
@@ -134,7 +146,7 @@ export default function SettingsPage() {
         if (typeof window !== 'undefined') {
           localStorage.setItem(
             'user',
-            JSON.stringify(response.data),
+            JSON.stringify(response.data.data),
           );
         }
       }
@@ -767,24 +779,47 @@ export default function SettingsPage() {
                     Current Password
                   </label>
 
-                  <input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(event) =>
-                      setCurrentPassword(event.target.value)
-                    }
-                    autoComplete="current-password"
+                  <div
                     style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '11px 12px',
-                      border: '1px solid #D1D5DB',
-                      borderRadius: '7px',
-                      background: '#FFFFFF',
-                      color: '#111827',
-                      fontSize: '14px',
+                      position: 'relative',
                     }}
-                  />
+                  >
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      value={currentPassword}
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                      autoComplete="current-password"
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '11px 80px 11px 12px',
+                        border: '1px solid #D1D5DB',
+                        borderRadius: '7px',
+                        background: '#FFFFFF',
+                        color: '#111827',
+                        fontSize: '14px',
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#2563EB',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {showCurrentPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* New Password */}
@@ -801,34 +836,108 @@ export default function SettingsPage() {
                     New Password
                   </label>
 
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(event) =>
-                      setNewPassword(event.target.value)
-                    }
-                    autoComplete="new-password"
+                  <div
                     style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '11px 12px',
-                      border: '1px solid #D1D5DB',
-                      borderRadius: '7px',
-                      background: '#FFFFFF',
-                      color: '#111827',
-                      fontSize: '14px',
+                      position: 'relative',
                     }}
-                  />
+                  >
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(event) => {
+                        setNewPassword(event.target.value);
+                        setPasswordError('');
+                      }}
+                      autoComplete="new-password"
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '11px 80px 11px 12px',
+                        border: '1px solid #D1D5DB',
+                        borderRadius: '7px',
+                        background: '#FFFFFF',
+                        color: '#111827',
+                        fontSize: '14px',
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowNewPassword(!showNewPassword)
+                      }
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#2563EB',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {showNewPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
 
                   <div
                     style={{
-                      marginTop: '6px',
+                      marginTop: '8px',
                       fontSize: '12px',
-                      color: '#6B7280',
+                      lineHeight: '1.7',
                     }}
                   >
-                    Minimum 12 characters, including uppercase, lowercase,
-                    number and special character.
+                    <div
+                      style={{
+                        color: '#6B7280',
+                        marginBottom: '2px',
+                      }}
+                    >
+                      Password must contain:
+                    </div>
+
+                    <div
+                      style={{
+                        color: passwordRequirements.length ? '#16A34A' : '#6B7280',
+                      }}
+                    >
+                      {passwordRequirements.length ? '✓' : '•'} At least 12 characters
+                    </div>
+
+                    <div
+                      style={{
+                        color: passwordRequirements.uppercase ? '#16A34A' : '#6B7280',
+                      }}
+                    >
+                      {passwordRequirements.uppercase ? '✓' : '•'} At least one uppercase letter (A–Z)
+                    </div>
+
+                    <div
+                      style={{
+                        color: passwordRequirements.lowercase ? '#16A34A' : '#6B7280',
+                      }}
+                    >
+                      {passwordRequirements.lowercase ? '✓' : '•'} At least one lowercase letter (a–z)
+                    </div>
+
+                    <div
+                      style={{
+                        color: passwordRequirements.number ? '#16A34A' : '#6B7280',
+                      }}
+                    >
+                      {passwordRequirements.number ? '✓' : '•'} At least one number (0–9)
+                    </div>
+
+                    <div
+                      style={{
+                        color: passwordRequirements.special ? '#16A34A' : '#6B7280',
+                      }}
+                    >
+                      {passwordRequirements.special ? '✓' : '•'} At least one special character (e.g. !, @, #, $, %)
+                    </div>
                   </div>
                 </div>
 
@@ -846,24 +955,52 @@ export default function SettingsPage() {
                     Confirm New Password
                   </label>
 
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) =>
-                      setConfirmPassword(event.target.value)
-                    }
-                    autoComplete="new-password"
+                  <div
                     style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '11px 12px',
-                      border: '1px solid #D1D5DB',
-                      borderRadius: '7px',
-                      background: '#FFFFFF',
-                      color: '#111827',
-                      fontSize: '14px',
+                      position: 'relative',
                     }}
-                  />
+                  >
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(event) => {
+                        setConfirmPassword(event.target.value);
+                        setPasswordError('');
+                      }}
+                      autoComplete="new-password"
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '11px 80px 11px 12px',
+                        border: '1px solid #D1D5DB',
+                        borderRadius: '7px',
+                        background: '#FFFFFF',
+                        color: '#111827',
+                        fontSize: '14px',
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowConfirmPassword(!showConfirmPassword)
+                      }
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#2563EB',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {showConfirmPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Form buttons */}

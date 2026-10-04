@@ -629,7 +629,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * - Reduces the risk of session misuse on a shared computer.
    */
   const resetSessionTimeout = useCallback(() => {
-    // Remembered sessions are intentionally not terminated by this
+    // Remembered sessions are not terminated by the
     // 15-minute inactivity timer.
     if (isRememberedSession()) {
       if (sessionTimeoutRef.current) {
@@ -642,12 +642,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (sessionTimeoutRef.current) {
       clearTimeout(sessionTimeoutRef.current);
+      sessionTimeoutRef.current = null;
     }
 
     sessionTimeoutRef.current = setTimeout(() => {
       void logout();
     }, SESSION_TIMEOUT * 1000);
   }, [logout]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    const handleUserActivity = () => {
+      if (!isRememberedSession()) {
+        resetSessionTimeout();
+      }
+    };
+
+    const events = [
+      'mousedown',
+      'mousemove',
+      'keydown',
+      'scroll',
+      'touchstart',
+      'click',
+    ];
+
+    events.forEach((event) => {
+      window.addEventListener(event, handleUserActivity);
+    });
+
+    return () => {
+      events.forEach((event) => {
+        window.removeEventListener(event, handleUserActivity);
+      });
+    };
+  }, [isAuthenticated, resetSessionTimeout]);  
 
   /**
    * Schedule access-token refresh.

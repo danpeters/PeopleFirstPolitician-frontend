@@ -1,4 +1,4 @@
-/**
+﻿/**
  * File:
  * C:\Projects\PeopleFirstPolitician\frontend\src\components\layout\Sidebar.tsx
  *
@@ -80,13 +80,18 @@ const menuSections: MenuSection[] = [
     ],
   },
 
-  {
-    id: 'election-management',
-    label: 'Election Management',
-    defaultOpen: false,
-    comingSoon: true,
-    items: [],
-  },
+    {
+      id: 'election-management',
+      label: 'Election Management',
+      defaultOpen: true,
+      items: [
+        {
+          label: 'Elections',
+          href: '/elections',
+          icon: '▣',
+        },
+      ],
+    },
 
   {
     id: 'field-operations',

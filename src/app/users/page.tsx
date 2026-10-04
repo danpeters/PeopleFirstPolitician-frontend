@@ -981,7 +981,11 @@ const handleStatusChange = async (
           style={{
             background: 'white',
             borderRadius: '8px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            boxShadow: 
+              '0 1px 3px rgba(0,0,0,0.1)',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
             overflow: 'hidden',
           }}
         >
@@ -1410,6 +1414,8 @@ const handleStatusChange = async (
               autoComplete="off"
               style={{
                 padding: '24px',
+                overflowY: 'auto',
+                flex: 1,
               }}
             >
               {formError && (
@@ -1699,6 +1705,9 @@ const handleStatusChange = async (
               autoComplete="off"
               style={{
                 padding: '24px',
+                overflowY: 'auto',
+                flex: 1,
+                minHeight: 0,
               }}
             >
               {editError && (
