@@ -90,6 +90,11 @@ const menuSections: MenuSection[] = [
           href: '/elections',
           icon: '▣',
         },
+        {
+          label: 'Electoral Scopes',
+          href: '/election-scopes',
+          icon: '⌖',
+        },
       ],
     },
 
