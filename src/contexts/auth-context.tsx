@@ -262,6 +262,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       /**
+       * Validate Nigerian phone number.
+       *
+       * Registration requires exactly 11 digits.
+       * Example: 08012345678
+       */
+      const phoneRegex = /^\d{11}$/;
+
+      if (!phoneRegex.test(phone.trim())) {
+        throw new Error(
+          'Phone number must contain exactly 11 digits',
+        );
+      }
+
+      /**
        * Validate password length.
        */
       if (password.length < 8) {

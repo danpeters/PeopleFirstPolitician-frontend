@@ -350,27 +350,69 @@ const sanitizeResponseData = (data: any): any => {
  * Prevents leaking sensitive information in error messages
  */
 const getSafeErrorMessage = (error: AxiosError): string => {
-  // Production: Return generic error messages
-  if (process.env.NODE_ENV === 'production') {
-    const status = error.response?.status;
-    if (status === 400) return 'Invalid request. Please check your input.';
-    if (status === 401) return 'Session expired. Please login again.';
-    if (status === 403) return 'You don\'t have permission to perform this action.';
-    if (status === 404) return 'Resource not found.';
-    if (status === 429) return 'Too many requests. Please try again later.';
-    if (status === 500) return 'Server error. Please try again later.';
-    return 'An error occurred. Please try again.';
-  }
-  
-  // Development: Return more detailed errors
-  const responseData = error.response?.data as any;
-  if (responseData?.message) {
+  const status = error.response?.status;
+
+  const responseData = error.response?.data as
+    | {
+        message?: string | string[];
+      }
+    | undefined;
+
+  // ------------------------------------------------------------
+  // Validation errors
+  // Show safe backend validation messages to the user.
+  // NestJS may return message as either a string or an array.
+  // ------------------------------------------------------------
+
+  if (status === 400 && responseData?.message) {
+    if (Array.isArray(responseData.message)) {
+      return responseData.message.join('. ');
+    }
+
     return responseData.message;
   }
-  if (error.message) {
-    return error.message;
+
+  // ------------------------------------------------------------
+  // Production-safe generic messages for other errors
+  // ------------------------------------------------------------
+
+  if (process.env.NODE_ENV === 'production') {
+    if (status === 401) {
+      return 'Authentication failed. Please check your details.';
+    }
+
+    if (status === 403) {
+      return "You don't have permission to perform this action.";
+    }
+
+    if (status === 404) {
+      return 'The requested resource was not found.';
+    }
+
+    if (status === 429) {
+      return 'Too many requests. Please try again later.';
+    }
+
+    if (status === 500) {
+      return 'Server error. Please try again later.';
+    }
+
+    return 'An error occurred. Please try again.';
   }
-  return 'An unexpected error occurred.';
+
+  // ------------------------------------------------------------
+  // Development
+  // ------------------------------------------------------------
+
+  if (responseData?.message) {
+    if (Array.isArray(responseData.message)) {
+      return responseData.message.join('. ');
+    }
+
+    return responseData.message;
+  }
+
+  return error.message || 'An unexpected error occurred.';
 };
 
 // ============================================================

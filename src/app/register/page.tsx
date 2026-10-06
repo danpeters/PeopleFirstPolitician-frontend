@@ -1,4 +1,3 @@
-
 /**
  * File: C:\Projects\PeopleFirstPolitician\frontend\src\app\register\page.tsx
  *
@@ -6,23 +5,13 @@
  * - Provides the public registration page for PeopleFirst Politician.
  * - Allows new users to create a standard platform account.
  *
- * Responsibilities:
- * - Collect full name.
- * - Collect email address.
- * - Collect phone number.
- * - Collect password.
- * - Collect password confirmation.
- * - Submit registration through AuthContext.
- * - Display registration errors.
- * - Redirect the newly registered user to the login page.
- * - Provides a Back to Home link for users who cancel registration.
- *
- * Security:
- * - Does not expose a role-selection field.
- * - The backend assigns the standard USER role.
- * - Password confirmation is checked before submission.
- * - Password values are not stored outside the component state.
- * - Registration is submitted through the central authentication context.
+ * Improvements:
+ * - Password show/hide controls.
+ * - Clear password requirements.
+ * - Live password validation.
+ * - Password confirmation validation.
+ * - Improved user guidance.
+ * - Mobile-friendly form controls.
  */
 
 'use client';
@@ -34,30 +23,85 @@ import { useAuth } from '@/contexts/auth-context';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { register } = useAuth();
+  const { register, login } = useAuth();
 
-  /**
-   * Registration form state.
-   */
+  // ============================================================
+  // FORM STATE
+  // ============================================================
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] =
-    useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  /**
-   * UI state.
-   */
-  const [isSubmitting, setIsSubmitting] =
+  // ============================================================
+  // UI STATE
+  // ============================================================
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] =
     useState(false);
 
-  const [errorMessage, setErrorMessage] =
-    useState('');
+  // ============================================================
+  // PASSWORD REQUIREMENTS
+  // These match the backend validation requirements.
+  // ============================================================
 
-  /**
-   * Submit registration form.
-   */
+  const passwordRequirements = {
+    minLength: password.length >= 8,
+    lowercase: /[a-z]/.test(password),
+    uppercase: /[A-Z]/.test(password),
+    number: /\d/.test(password),
+  };
+
+  const passwordIsValid =
+    passwordRequirements.minLength &&
+    passwordRequirements.lowercase &&
+    passwordRequirements.uppercase &&
+    passwordRequirements.number;
+
+  const passwordsMatch =
+    confirmPassword.length > 0 &&
+    password === confirmPassword;
+
+  // ============================================================
+  // VALIDATION MESSAGE
+  // ============================================================
+
+  const getPasswordError = () => {
+    const missing: string[] = [];
+
+    if (!passwordRequirements.minLength) {
+      missing.push('at least 8 characters');
+    }
+
+    if (!passwordRequirements.uppercase) {
+      missing.push('one uppercase letter');
+    }
+
+    if (!passwordRequirements.lowercase) {
+      missing.push('one lowercase letter');
+    }
+
+    if (!passwordRequirements.number) {
+      missing.push('one number');
+    }
+
+    if (missing.length === 0) {
+      return '';
+    }
+
+    return `Password must contain ${missing.join(', ')}.`;
+  };
+
+  // ============================================================
+  // SUBMIT
+  // ============================================================
+
   const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
@@ -65,9 +109,19 @@ export default function RegisterPage() {
 
     setErrorMessage('');
 
-    /**
-     * Client-side password confirmation check.
-     */
+    // ----------------------------------------------------------
+    // Validate password
+    // ----------------------------------------------------------
+
+    if (!passwordIsValid) {
+      setErrorMessage(getPasswordError());
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // Validate password confirmation
+    // ----------------------------------------------------------
+
     if (password !== confirmPassword) {
       setErrorMessage(
         'Password and confirmation do not match.',
@@ -75,45 +129,135 @@ export default function RegisterPage() {
       return;
     }
 
-    /**
-     * Prevent duplicate submissions.
-     */
+    // ----------------------------------------------------------
+    // Validate all required fields
+    // ----------------------------------------------------------
+
+    if (!fullName.trim()) {
+      setErrorMessage('Full name is required.');
+      return;
+    }
+
+    if (!email.trim()) {
+      setErrorMessage('Email address is required.');
+      return;
+    }
+
+    if (!phone.trim()) {
+      setErrorMessage('Phone number is required.');
+      return;
+    }
+
+    if (!password) {
+      setErrorMessage('Password is required.');
+      return;
+    }
+
+    if (!confirmPassword) {
+      setErrorMessage('Please confirm your password.');
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // Validate Nigerian phone number
+    // ----------------------------------------------------------
+
+    const phoneRegex = /^\d{11}$/;
+
+    if (!phoneRegex.test(phone.trim())) {
+      setErrorMessage(
+        'Phone number must contain exactly 11 digits.',
+      );
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // Prevent duplicate submissions
+    // ----------------------------------------------------------
+
     setIsSubmitting(true);
 
     try {
-      /**
-       * Register the new public user.
-       *
-       * No role is supplied here.
-       * The backend automatically assigns the standard
-       * USER role.
-       */
       await register(
-        fullName,
-        email,
-        phone,
+        fullName.trim(),
+        email.trim(),
+        phone.trim(),
         password,
         confirmPassword,
       );
 
-      /**
-       * Registration does not automatically log the user in.
-       *
-       * Send the newly registered user to the login page.
-       */
-      router.push('/login');
+      // Automatically log the newly registered user in.
+      await login(
+        email.trim().toLowerCase(),
+        password,
+        false,
+      );
+
+      // Take the authenticated user directly to the dashboard.
+      router.push('/dashboard');
     } catch (error: any) {
-      /**
-       * Display the backend validation/error message.
-       */
       setErrorMessage(
         error?.message ||
-          'Registration failed. Please try again.',
+          'Registration failed. Please check your details and try again.',
       );
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  // ============================================================
+  // PASSWORD REQUIREMENT COMPONENT
+  // ============================================================
+
+  const Requirement = ({
+    valid,
+    children,
+  }: {
+    valid: boolean;
+    children: React.ReactNode;
+  }) => (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        marginBottom: '0.25rem',
+        color: valid ? '#166534' : '#6b7280',
+        fontSize: '0.875rem',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          fontWeight: 700,
+          width: '18px',
+          textAlign: 'center',
+        }}
+      >
+        {valid ? '✓' : '○'}
+      </span>
+
+      <span>{children}</span>
+    </div>
+  );
+
+  // ============================================================
+  // PASSWORD FIELD STYLE
+  // ============================================================
+
+  const passwordInputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '0.85rem 3rem 0.85rem 0.85rem',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    fontSize: '1rem',
+    boxSizing: 'border-box',
+    outline: 'none',
+  };
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <main
@@ -122,7 +266,7 @@ export default function RegisterPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '2rem',
+        padding: '1rem',
         background: '#f4f7fb',
       }}
     >
@@ -132,11 +276,16 @@ export default function RegisterPage() {
           maxWidth: '520px',
           background: '#ffffff',
           borderRadius: '12px',
-          padding: '2.5rem',
+          padding: 'clamp(1.25rem, 5vw, 2.5rem)',
           boxShadow:
             '0 8px 30px rgba(0, 0, 0, 0.08)',
+          boxSizing: 'border-box',
         }}
       >
+        {/* ======================================================
+            HEADER
+        ======================================================= */}
+
         <div
           style={{
             textAlign: 'center',
@@ -165,6 +314,10 @@ export default function RegisterPage() {
           </p>
         </div>
 
+        {/* ======================================================
+            ERROR MESSAGE
+        ======================================================= */}
+
         {errorMessage && (
           <div
             role="alert"
@@ -174,8 +327,8 @@ export default function RegisterPage() {
               borderRadius: '8px',
               background: '#fee2e2',
               color: '#991b1b',
-              border:
-                '1px solid #fecaca',
+              border: '1px solid #fecaca',
+              lineHeight: 1.5,
             }}
           >
             {errorMessage}
@@ -183,7 +336,10 @@ export default function RegisterPage() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* Full Name */}
+          {/* ====================================================
+              FULL NAME
+          ===================================================== */}
+
           <div style={{ marginBottom: '1.25rem' }}>
             <label
               htmlFor="fullName"
@@ -194,7 +350,7 @@ export default function RegisterPage() {
                 color: '#111827',
               }}
             >
-              Full Name
+              Full Name <span style={{ color: '#dc2626' }}>*</span>
             </label>
 
             <input
@@ -212,8 +368,7 @@ export default function RegisterPage() {
               style={{
                 width: '100%',
                 padding: '0.85rem',
-                border:
-                  '1px solid #d1d5db',
+                border: '1px solid #d1d5db',
                 borderRadius: '8px',
                 fontSize: '1rem',
                 boxSizing: 'border-box',
@@ -221,7 +376,10 @@ export default function RegisterPage() {
             />
           </div>
 
-          {/* Email */}
+          {/* ====================================================
+              EMAIL
+          ===================================================== */}
+
           <div style={{ marginBottom: '1.25rem' }}>
             <label
               htmlFor="email"
@@ -232,7 +390,7 @@ export default function RegisterPage() {
                 color: '#111827',
               }}
             >
-              Email Address
+              Email Address <span style={{ color: '#dc2626' }}>*</span>
             </label>
 
             <input
@@ -250,8 +408,7 @@ export default function RegisterPage() {
               style={{
                 width: '100%',
                 padding: '0.85rem',
-                border:
-                  '1px solid #d1d5db',
+                border: '1px solid #d1d5db',
                 borderRadius: '8px',
                 fontSize: '1rem',
                 boxSizing: 'border-box',
@@ -259,7 +416,10 @@ export default function RegisterPage() {
             />
           </div>
 
-          {/* Phone */}
+          {/* ====================================================
+              PHONE
+          ===================================================== */}
+
           <div style={{ marginBottom: '1.25rem' }}>
             <label
               htmlFor="phone"
@@ -270,7 +430,7 @@ export default function RegisterPage() {
                 color: '#111827',
               }}
             >
-              Phone Number
+              Phone Number <span style={{ color: '#dc2626' }}>*</span>
             </label>
 
             <input
@@ -278,57 +438,25 @@ export default function RegisterPage() {
               name="phone"
               type="tel"
               value={phone}
-              onChange={(event) =>
-                setPhone(event.target.value)
-              }
-              placeholder="Enter your phone number"
+              onChange={(event) => {
+                const value = event.target.value.replace(/\D/g, '');
+
+                if (value.length <= 11) {
+                  setPhone(value);
+                }
+              }}
+              placeholder="e.g. 08012345678"
               autoComplete="tel"
+              inputMode="numeric"
+              maxLength={11}
+              minLength={11}
+              pattern="[0-9]{11}"
               required
               disabled={isSubmitting}
               style={{
                 width: '100%',
                 padding: '0.85rem',
-                border:
-                  '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '1rem',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-
-          {/* Password */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label
-              htmlFor="password"
-              style={{
-                display: 'block',
-                marginBottom: '0.5rem',
-                fontWeight: 600,
-                color: '#111827',
-              }}
-            >
-              Password
-            </label>
-
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={password}
-              onChange={(event) =>
-                setPassword(event.target.value)
-              }
-              placeholder="Create a password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              disabled={isSubmitting}
-              style={{
-                width: '100%',
-                padding: '0.85rem',
-                border:
-                  '1px solid #d1d5db',
+                border: '1px solid #d1d5db',
                 borderRadius: '8px',
                 fontSize: '1rem',
                 boxSizing: 'border-box',
@@ -342,11 +470,136 @@ export default function RegisterPage() {
                 color: '#6b7280',
               }}
             >
-              Minimum 8 characters.
+              Enter your 11-digit Nigerian mobile phone number.
             </small>
           </div>
 
-          {/* Confirm Password */}
+          {/* ====================================================
+              PASSWORD
+          ===================================================== */}
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label
+              htmlFor="password"
+              style={{
+                display: 'block',
+                marginBottom: '0.5rem',
+                fontWeight: 600,
+                color: '#111827',
+              }}
+            >
+              Password <span style={{ color: '#dc2626' }}>*</span>
+            </label>
+
+            {/* Password input + eye button */}
+
+            <div
+              style={{
+                position: 'relative',
+              }}
+            >
+              <input
+                id="password"
+                name="password"
+                type={
+                  showPassword ? 'text' : 'password'
+                }
+                value={password}
+                onChange={(event) =>
+                  setPassword(event.target.value)
+                }
+                placeholder="Create a password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                disabled={isSubmitting}
+                style={passwordInputStyle}
+              />
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowPassword(!showPassword)
+                }
+                aria-label={
+                  showPassword
+                    ? 'Hide password'
+                    : 'Show password'
+                }
+                title={
+                  showPassword
+                    ? 'Hide password'
+                    : 'Show password'
+                }
+                disabled={isSubmitting}
+                style={{
+                  position: 'absolute',
+                  right: '0.65rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  padding: '0.25rem',
+                }}
+              >
+                {showPassword ? '🙈' : '👁'}
+              </button>
+            </div>
+
+            {/* Password guidance */}
+
+            <div
+              style={{
+                marginTop: '0.75rem',
+                padding: '0.75rem',
+                background: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '8px',
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: 600,
+                  color: '#374151',
+                  fontSize: '0.875rem',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                Password requirements:
+              </div>
+
+              <Requirement
+                valid={passwordRequirements.minLength}
+              >
+                At least 8 characters
+              </Requirement>
+
+              <Requirement
+                valid={passwordRequirements.uppercase}
+              >
+                At least one uppercase letter (A–Z)
+              </Requirement>
+
+              <Requirement
+                valid={passwordRequirements.lowercase}
+              >
+                At least one lowercase letter (a–z)
+              </Requirement>
+
+              <Requirement
+                valid={passwordRequirements.number}
+              >
+                At least one number (0–9)
+              </Requirement>
+            </div>
+          </div>
+
+          {/* ====================================================
+              CONFIRM PASSWORD
+          ===================================================== */}
+
           <div style={{ marginBottom: '1.5rem' }}>
             <label
               htmlFor="confirmPassword"
@@ -357,37 +610,101 @@ export default function RegisterPage() {
                 color: '#111827',
               }}
             >
-              Confirm Password
+              Confirm Password <span style={{ color: '#dc2626' }}>*</span>
             </label>
 
-            <input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              value={confirmPassword}
-              onChange={(event) =>
-                setConfirmPassword(
-                  event.target.value,
-                )
-              }
-              placeholder="Confirm your password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              disabled={isSubmitting}
+            <div
               style={{
-                width: '100%',
-                padding: '0.85rem',
-                border:
-                  '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '1rem',
-                boxSizing: 'border-box',
+                position: 'relative',
               }}
-            />
+            >
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type={
+                  showConfirmPassword
+                    ? 'text'
+                    : 'password'
+                }
+                value={confirmPassword}
+                onChange={(event) =>
+                  setConfirmPassword(
+                    event.target.value,
+                  )
+                }
+                placeholder="Re-enter your password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                disabled={isSubmitting}
+                style={{
+                  ...passwordInputStyle,
+                  border:
+                    confirmPassword.length > 0 &&
+                    !passwordsMatch
+                      ? '1px solid #dc2626'
+                      : passwordsMatch
+                        ? '1px solid #16a34a'
+                        : '1px solid #d1d5db',
+                }}
+              />
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowConfirmPassword(
+                    !showConfirmPassword,
+                  )
+                }
+                aria-label={
+                  showConfirmPassword
+                    ? 'Hide confirmation password'
+                    : 'Show confirmation password'
+                }
+                title={
+                  showConfirmPassword
+                    ? 'Hide password'
+                    : 'Show password'
+                }
+                disabled={isSubmitting}
+                style={{
+                  position: 'absolute',
+                  right: '0.65rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  padding: '0.25rem',
+                }}
+              >
+                {showConfirmPassword ? '🙈' : '👁'}
+              </button>
+            </div>
+
+            {confirmPassword.length > 0 && (
+              <small
+                style={{
+                  display: 'block',
+                  marginTop: '0.4rem',
+                  color: passwordsMatch
+                    ? '#166534'
+                    : '#991b1b',
+                  fontWeight: 500,
+                }}
+              >
+                {passwordsMatch
+                  ? '✓ Passwords match.'
+                  : 'Passwords do not match.'}
+              </small>
+            )}
           </div>
 
-          {/* Submit */}
+          {/* ====================================================
+              SUBMIT
+          ===================================================== */}
+
           <button
             type="submit"
             disabled={isSubmitting}
@@ -413,6 +730,10 @@ export default function RegisterPage() {
           </button>
         </form>
 
+        {/* ======================================================
+            LOGIN LINK
+        ======================================================= */}
+
         <div
           style={{
             marginTop: '1.5rem',
@@ -433,11 +754,11 @@ export default function RegisterPage() {
             Sign In
           </Link>
         </div>
-        {/* ============================================================
-            NAVIGATION
-            Gives a user who changes their mind a clear way to leave
-            the registration process and return to the home page.
-        ============================================================= */}
+
+        {/* ======================================================
+            HOME LINK
+        ======================================================= */}
+
         <div
           style={{
             marginTop: '1.5rem',
@@ -456,7 +777,6 @@ export default function RegisterPage() {
             ← Back to Home
           </Link>
         </div>
-
       </section>
     </main>
   );
