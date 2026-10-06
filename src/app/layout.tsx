@@ -19,6 +19,7 @@ import './globals.css';
 import { AuthProvider } from '@/contexts/auth-context';
 import AppShell from '@/components/layout/AppShell';
 import ClientReadyGate from '@/components/layout/ClientReadyGate';
+import { Toaster } from 'sonner';
 
 export const metadata: Metadata = {
   title: 'PeopleFirst Politician',
@@ -34,21 +35,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="antialiased">
-        {/*
-         * ClientReadyGate prevents the browser from briefly showing
-         * unstyled server-rendered markup while Next.js hydrates
-         * the client components and attaches their styles.
-         */}
-        <ClientReadyGate>
-          <AuthProvider>
-            <AppShell>
-              {children}
-            </AppShell>
-          </AuthProvider>
-        </ClientReadyGate>
-      </body>
-    </html>
-  );
+  <html lang="en">
+    <body className="antialiased">
+      {/*
+       * ClientReadyGate prevents the browser from briefly showing
+       * unstyled server-rendered markup while Next.js hydrates
+       * the client components and attaches their styles.
+       */}
+      <ClientReadyGate>
+        <AuthProvider>
+          <AppShell>
+            {children}
+          </AppShell>
+        </AuthProvider>
+      </ClientReadyGate>
+
+      <Toaster />
+    </body>
+  </html>
+);
 }

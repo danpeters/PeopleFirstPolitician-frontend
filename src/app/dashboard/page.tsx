@@ -135,6 +135,254 @@ export default function DashboardPage() {
           </p>
         </div>
 
+                {/* ====================================================
+            Election Management
+
+            These links provide direct access to the election
+            management modules from the dashboard.
+
+            IMPORTANT:
+            These cards provide navigation only. Actual
+            authorisation remains enforced by the backend.
+            ==================================================== */}
+        <div
+          style={{
+            marginBottom: '32px',
+          }}
+        >
+          <h2
+            style={{
+              fontSize: '20px',
+              fontWeight: '600',
+              color: '#1a202c',
+              marginBottom: '16px',
+            }}
+          >
+            Election Management
+          </h2>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns:
+                'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: '16px',
+            }}
+          >
+            <a
+              href="/elections"
+              style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow:
+                  '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'block',
+                transition:
+                  'box-shadow 0.2s',
+                textDecoration: 'none',
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#4299e1',
+                  marginBottom: '4px',
+                }}
+              >
+                🗳️ Elections
+              </h3>
+
+              <p
+                style={{
+                  color: '#4a5568',
+                  fontSize: '14px',
+                }}
+              >
+                Create and manage elections
+              </p>
+            </a>
+
+            <a
+              href="/election-scopes"
+              style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow:
+                  '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'block',
+                transition:
+                  'box-shadow 0.2s',
+                textDecoration: 'none',
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#48bb78',
+                  marginBottom: '4px',
+                }}
+              >
+                📍 Electoral Scopes
+              </h3>
+
+              <p
+                style={{
+                  color: '#4a5568',
+                  fontSize: '14px',
+                }}
+              >
+                Define electoral areas and scopes
+              </p>
+            </a>
+
+            <a
+              href="/election-positions"
+              style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow:
+                  '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'block',
+                transition:
+                  'box-shadow 0.2s',
+                textDecoration: 'none',
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#805ad5',
+                  marginBottom: '4px',
+                }}
+              >
+                🏛️ Election Positions
+              </h3>
+
+              <p
+                style={{
+                  color: '#4a5568',
+                  fontSize: '14px',
+                }}
+              >
+                Manage electoral positions
+              </p>
+            </a>
+            
+          </div>
+        </div>
+
+                {/* ====================================================
+            Field Operations
+
+            These links provide direct access to field-operation
+            modules from the dashboard.
+
+            IMPORTANT:
+            These cards provide navigation only. Actual
+            authorisation remains enforced by the backend.
+            ==================================================== */}
+        <div
+          style={{
+            marginBottom: '32px',
+          }}
+        >
+          <h2
+            style={{
+              fontSize: '20px',
+              fontWeight: '600',
+              color: '#1a202c',
+              marginBottom: '16px',
+            }}
+          >
+            Field Operations
+          </h2>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns:
+                'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: '16px',
+            }}
+          >
+            <a
+              href="/geography"
+              style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow:
+                  '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'block',
+                transition:
+                  'box-shadow 0.2s',
+                textDecoration: 'none',
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#d69e2e',
+                  marginBottom: '4px',
+                }}
+              >
+                🗺️ Electoral Geography
+              </h3>
+
+              <p
+                style={{
+                  color: '#4a5568',
+                  fontSize: '14px',
+                }}
+              >
+                Browse states, LGAs, wards and polling units
+              </p>
+            </a>
+
+            <a
+              href="/agents"
+              style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow:
+                  '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'block',
+                transition:
+                  'box-shadow 0.2s',
+                textDecoration: 'none',
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#3182ce',
+                  marginBottom: '4px',
+                }}
+              >
+                👤 Polling Unit Agents
+              </h3>
+
+              <p
+                style={{
+                  color: '#4a5568',
+                  fontSize: '14px',
+                }}
+              >
+                Register and manage polling unit agents
+              </p>
+            </a>
+          </div>
+        </div>
+
         {/* ====================================================
             Administrative Quick Actions
 

@@ -80,23 +80,28 @@ const menuSections: MenuSection[] = [
     ],
   },
 
-    {
-      id: 'election-management',
-      label: 'Election Management',
-      defaultOpen: true,
-      items: [
-        {
-          label: 'Elections',
-          href: '/elections',
-          icon: '▣',
-        },
-        {
-          label: 'Electoral Scopes',
-          href: '/election-scopes',
-          icon: '⌖',
-        },
-      ],
-    },
+      {
+    id: 'election-management',
+    label: 'Election Management',
+    defaultOpen: true,
+    items: [
+      {
+        label: 'Elections',
+        href: '/elections',
+        icon: '▣',
+      },
+      {
+        label: 'Election Positions',
+        href: '/election-positions',
+        icon: '▤',
+      },
+      {
+        label: 'Electoral Scopes',
+        href: '/election-scopes',
+        icon: '⌖',
+      },
+    ],
+  },
 
   {
     id: 'field-operations',
@@ -107,6 +112,11 @@ const menuSections: MenuSection[] = [
         label: 'Electoral Geography',
         href: '/geography',
         icon: '⌖',
+      },
+      {
+        label: 'Polling Unit Agents',
+        href: '/agents',
+        icon: '◉',
       },
     ],
   },
